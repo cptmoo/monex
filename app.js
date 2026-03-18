@@ -20,7 +20,7 @@ createApp({
             class="board"
             :class="[
               'size-' + settings.boardSize,
-              { 'board-locked': gameOver }
+              { 'board-locked': gameOver || !gameStarted }
             ]"
             :style="boardStyle"
           >
@@ -28,39 +28,22 @@ createApp({
               v-for="cell in flatBoard"
               :key="cell.key"
               class="cell"
-              :disabled="gameOver || isCellFilled(cell.r, cell.c)"
+              :class="cellClasses(cell.r, cell.c)"
+              :disabled="!gameStarted || gameOver || isCellFilled(cell.r, cell.c)"
               @click="handleCellClick(cell.r, cell.c)"
             >
-            <span
-            v-if="isCellFilled(cell.r, cell.c)"
-            class="cell-symbol"
-            :style="{ color: players[getCellValue(cell.r, cell.c)].colour }"
-            >
-            {{ players[getCellValue(cell.r, cell.c)].symbol }}
-            </span>
+              <span
+                v-if="isCellFilled(cell.r, cell.c)"
+                class="cell-symbol"
+                :style="{ color: players[getCellValue(cell.r, cell.c)].colour }"
+              >
+                {{ players[getCellValue(cell.r, cell.c)].symbol }}
+              </span>
             </button>
           </div>
         </section>
 
         <section class="status-panel">
-          <div class="status-card next-turn-card">
-            <div class="label">Next turn</div>
-            <div class="turn-line" v-if="!gameOver">
-              <span
-                class="turn-symbol"
-                :style="{ color: currentPlayer.colour }"
-              >
-                {{ currentPlayer.symbol }}
-              </span>
-              <span class="turn-meta">
-                {{ currentPlayer.isAI ? 'AI (placeholder)' : 'Human' }}
-              </span>
-            </div>
-            <div class="turn-line" v-else>
-              <span class="game-over-label">Game over</span>
-            </div>
-          </div>
-
           <div class="status-card">
             <div class="label">Clock</div>
             <div class="timers">
@@ -68,16 +51,20 @@ createApp({
                 v-for="(player, index) in players"
                 :key="'timer-' + index"
                 class="timer-chip"
-                :class="{ active: index === currentPlayerIndex && !gameOver }"
-              >
+                :class="{
+                  active: index === currentPlayerIndex && !gameOver && gameStarted && !player.isOut,
+                  out: player.isOut
+                }"              >
                 <span
                   class="timer-symbol"
                   :style="{ color: player.colour }"
                 >
                   {{ player.symbol }}
                 </span>
-                <span class="timer-value">{{ formatTime(player.timeLeftMs) }}</span>
-              </div>
+                  <span class="timer-value">
+                    {{ player.isOut ? 'OUT' : displayTimeForPlayer(index) }}
+                  </span>              
+                </div>
             </div>
           </div>
 
@@ -101,12 +88,19 @@ createApp({
             </div>
           </div>
 
-          <div class="action-row">
+          <div class="action-row action-row-3">
             <button class="primary-button" @click="openSetup = true">
               New game
             </button>
             <button class="secondary-button" @click="restartWithCurrentSettings">
               Restart
+            </button>
+            <button
+              class="secondary-button"
+              :disabled="!canUndo"
+              @click="undoMove"
+            >
+              Undo
             </button>
           </div>
         </section>
@@ -303,9 +297,14 @@ createApp({
       currentPlayerIndex: 0,
       openSetup: true,
       gameOver: false,
+      gameStarted: false,
       message: "Set up a new game.",
       timerInterval: null,
-      turnStartedAt: null
+      turnStartedAt: null,
+      nowTick: Date.now(),
+      lastMove: null,
+      resultLine: null,
+      moveHistory: []
     };
   },
 
@@ -337,6 +336,10 @@ createApp({
         gridTemplateColumns: `repeat(${this.settings.boardSize}, 1fr)`,
         gridTemplateRows: `repeat(${this.settings.boardSize}, 1fr)`
       };
+    },
+
+    canUndo() {
+      return this.gameStarted && this.moveHistory.length > 0;
     }
   },
 
@@ -357,25 +360,66 @@ createApp({
         { symbol: "△", colour: "#15803d", isAI: false }
       ];
 
-      return defaults.slice(0, count).map(player => ({
-        ...player,
-        timeLeftMs: 0
-      }));
+    return defaults.slice(0, count).map(player => ({
+      ...player,
+      timeLeftMs: 0,
+      timerStarted: false,
+      isOut: false
+    }));
+    },
+    getActivePlayerIndices() {
+      const indices = [];
+      for (let i = 0; i < this.players.length; i++) {
+        if (!this.players[i].isOut) indices.push(i);
+      }
+      return indices;
     },
 
+    getNextActivePlayerIndex(fromIndex) {
+      if (!this.players.length) return 0;
+
+      let idx = fromIndex;
+      for (let step = 0; step < this.players.length; step++) {
+        idx = (idx + 1) % this.players.length;
+        if (!this.players[idx].isOut) return idx;
+      }
+
+      return fromIndex;
+    },
     initialiseEmptyBoard() {
-  this.board = Array.from({ length: this.settings.boardSize }, () =>
-    Array.from({ length: this.settings.boardSize }, () => null)
-  );
-},
+      this.board = Array.from({ length: this.settings.boardSize }, () =>
+        Array.from({ length: this.settings.boardSize }, () => null)
+      );
+    },
 
     getCellValue(r, c) {
-    return this.board?.[r]?.[c] ?? null;
+      return this.board?.[r]?.[c] ?? null;
     },
 
     isCellFilled(r, c) {
-    return this.getCellValue(r, c) !== null;
+      return this.getCellValue(r, c) !== null;
     },
+
+    isLastMove(r, c) {
+      return !!this.lastMove && this.lastMove.r === r && this.lastMove.c === c;
+    },
+    cellClasses(r, c) {
+      return {
+        "last-move": this.isLastMove(r, c) && !this.isResultCell(r, c),
+        "win-cell": this.isResultCellOfType(r, c, "win"),
+        "loss-cell": this.isResultCellOfType(r, c, "loss")
+      };
+    },
+
+    isResultCell(r, c) {
+      return this.resultLine?.cells?.some(cell => cell.r === r && cell.c === c) ?? false;
+    },
+
+    isResultCellOfType(r, c, type) {
+      return this.resultLine?.type === type &&
+        this.resultLine.cells.some(cell => cell.r === r && cell.c === c);
+    },    
+
     resetDraft() {
       this.draftSettings = {
         playerCount: this.settings.playerCount,
@@ -417,23 +461,30 @@ createApp({
         ...this.draftSettings
       };
 
-      this.players = this.draftPlayers.map(player => ({
+      const newPlayers = this.draftPlayers.map(player => ({
         symbol: player.symbol,
         colour: player.colour,
         isAI: player.isAI,
-        timeLeftMs: this.draftSettings.timerMinutes * 60 * 1000
+        timeLeftMs: this.draftSettings.timerMinutes * 60 * 1000,
+        timerStarted: false,
+        isOut: false
       }));
+
+      this.players = this.shuffleArray(newPlayers);
 
       this.board = Array.from({ length: this.settings.boardSize }, () =>
         Array.from({ length: this.settings.boardSize }, () => null)
       );
 
-      this.currentPlayerIndex = 0;
-      this.gameOver = false;
+      this.currentPlayerIndex = 0;      this.gameOver = false;
+      this.gameStarted = true;
       this.openSetup = false;
+      this.lastMove = null;
+      this.moveHistory = [];
+      this.resultLine = null;
       this.message = this.players.some(p => p.isAI)
-        ? "AI is not implemented yet. AI players are placeholders and can still be tapped manually."
-        : "Game started.";
+        ? `${this.players[this.currentPlayerIndex].symbol} starts. AI is not implemented yet.`
+        : `${this.players[this.currentPlayerIndex].symbol} starts.`;
 
       this.startTurnClock();
     },
@@ -462,18 +513,23 @@ createApp({
     startTurnClock() {
       this.clearTimerInterval();
       this.turnStartedAt = Date.now();
+      this.nowTick = Date.now();
 
       this.timerInterval = setInterval(() => {
-        if (this.gameOver || !this.players.length) return;
+        if (!this.gameStarted || this.gameOver || !this.players.length) return;
 
-        const now = Date.now();
-        const elapsed = now - this.turnStartedAt;
+        this.nowTick = Date.now();
+
         const player = this.players[this.currentPlayerIndex];
+        if (player.isOut) return;
+        if (!player.timerStarted) return;
+
+        const elapsed = this.nowTick - this.turnStartedAt;
         const remaining = player.timeLeftMs - elapsed;
 
         if (remaining <= 0) {
           player.timeLeftMs = 0;
-          this.turnStartedAt = now;
+          this.turnStartedAt = this.nowTick;
           this.finishByTimeout(this.currentPlayerIndex);
         }
       }, 100);
@@ -481,11 +537,36 @@ createApp({
 
     commitElapsedToCurrentPlayer() {
       if (!this.players.length || this.turnStartedAt === null) return;
-      const now = Date.now();
-      const elapsed = now - this.turnStartedAt;
+
       const player = this.players[this.currentPlayerIndex];
-      player.timeLeftMs = Math.max(0, player.timeLeftMs - elapsed);
+      const now = Date.now();
+
+      if (player.timerStarted) {
+        const elapsed = now - this.turnStartedAt;
+        player.timeLeftMs = Math.max(0, player.timeLeftMs - elapsed);
+      }
+
       this.turnStartedAt = now;
+      this.nowTick = now;
+    },
+
+    displayTimeForPlayer(index) {
+      if (!this.players[index]) return "0:00";
+
+      const player = this.players[index];
+      let ms = player.timeLeftMs;
+
+      if (
+        player.timerStarted &&
+        this.gameStarted &&
+        !this.gameOver &&
+        index === this.currentPlayerIndex &&
+        this.turnStartedAt !== null
+      ) {
+        ms -= (this.nowTick - this.turnStartedAt);
+      }
+
+      return this.formatTime(Math.max(0, ms));
     },
 
     formatTime(ms) {
@@ -497,6 +578,7 @@ createApp({
 
     handleCellClick(r, c) {
       if (this.gameOver) return;
+      if (!this.gameStarted) return;
       if (this.board[r][c] !== null) return;
 
       const legalResult = this.validateMove(r, c);
@@ -506,26 +588,35 @@ createApp({
         return;
       }
 
+      this.moveHistory.push(this.createSnapshot());
       this.commitElapsedToCurrentPlayer();
+      this.resultLine = null;
 
       const playerIndex = this.currentPlayerIndex;
       this.board[r][c] = playerIndex;
+      this.players[playerIndex].timerStarted = true;
+      this.lastMove = { r, c };
 
-      const madeFour = this.hasLineOfLength(playerIndex, 4);
-      const madeThree = this.hasLineOfLength(playerIndex, 3);
+      const winningLine = this.findLineOfLength(playerIndex, 4);
+      const losingLine = this.findLineOfLength(playerIndex, 3);
 
-      if (madeFour) {
+      if (winningLine) {
+        this.resultLine = {
+          type: "win",
+          cells: winningLine
+        };
         this.finishWithWin(playerIndex, "wins by making 4 in a row.");
         return;
       }
 
-      if (madeThree) {
-        this.finishWithLoss(
-          playerIndex,
-          "loses by making 3 in a row."
-        );
+      if (losingLine) {
+        this.resultLine = {
+          type: "loss",
+          cells: losingLine
+        };
+        this.handlePlayerLoss(playerIndex);
         return;
-      }
+      }   
 
       if (this.isBoardFull()) {
         this.gameOver = true;
@@ -534,11 +625,57 @@ createApp({
         return;
       }
 
-      this.currentPlayerIndex = (this.currentPlayerIndex + 1) % this.players.length;
+      this.currentPlayerIndex = this.getNextActivePlayerIndex(this.currentPlayerIndex);
       this.turnStartedAt = Date.now();
+      this.nowTick = this.turnStartedAt;
 
       const nextPlayer = this.players[this.currentPlayerIndex];
       this.message = `${nextPlayer.symbol} to move.`;
+    },
+
+    createSnapshot() {
+      return {
+        board: this.board.map(row => [...row]),
+        currentPlayerIndex: this.currentPlayerIndex,
+        players: this.players.map(player => ({
+          ...player
+        })),
+        gameOver: this.gameOver,
+        gameStarted: this.gameStarted,
+        message: this.message,
+        lastMove: this.lastMove ? { ...this.lastMove } : null,
+        resultLine: this.resultLine
+          ? {
+              type: this.resultLine.type,
+              cells: this.resultLine.cells.map(cell => ({ ...cell }))
+            }
+          : null
+      };
+    },
+
+    undoMove() {
+      if (!this.canUndo) return;
+
+      const snapshot = this.moveHistory.pop();
+      this.board = snapshot.board.map(row => [...row]);
+      this.currentPlayerIndex = snapshot.currentPlayerIndex;
+      this.players = snapshot.players.map(player => ({ ...player }));
+      this.gameOver = snapshot.gameOver;
+      this.gameStarted = snapshot.gameStarted;
+      this.message = "Move undone.";
+      this.lastMove = snapshot.lastMove ? { ...snapshot.lastMove } : null;
+      this.resultLine = snapshot.resultLine
+        ? {
+            type: snapshot.resultLine.type,
+            cells: snapshot.resultLine.cells.map(cell => ({ ...cell }))
+          }
+        : null;
+
+      if (this.gameStarted && !this.gameOver) {
+        this.startTurnClock();
+      } else {
+        this.clearTimerInterval();
+      }
     },
 
     validateMove(r, c) {
@@ -547,7 +684,10 @@ createApp({
       }
 
       const current = this.currentPlayerIndex;
-      const next = (current + 1) % this.players.length;
+      if (this.players[current].isOut) {
+        return { ok: false, reason: "This player has been eliminated." };
+      }
+      const next = this.getNextActivePlayerIndex(current);
 
       const selfWinningMoves = this.findWinningMovesForPlayer(current);
       if (selfWinningMoves.length > 0) {
@@ -574,7 +714,7 @@ createApp({
 
       return {
         ok: false,
-        reason: `You must block the next player's winning move unless you can win now or every block would lose by 3.`
+        reason: "You must block the next player's winning move unless you can win now or every block would lose by 3."
       };
     },
 
@@ -592,11 +732,73 @@ createApp({
       this.message = `${player.symbol} ${text}`;
     },
 
-    finishByTimeout(playerIndex) {
-      this.gameOver = true;
-      this.clearTimerInterval();
+    handlePlayerLoss(playerIndex) {
       const player = this.players[playerIndex];
-      this.message = `${player.symbol} ran out of time.`;
+
+      if (this.players.length === 2) {
+        const winnerIndex = this.getNextActivePlayerIndex(playerIndex);
+        this.gameOver = true;
+        this.clearTimerInterval();
+        this.message = `${player.symbol} loses by making 3 in a row. ${this.players[winnerIndex].symbol} wins.`;
+        return;
+      }
+
+      player.isOut = true;
+
+      const activePlayers = this.getActivePlayerIndices();
+
+      if (activePlayers.length === 1) {
+        this.gameOver = true;
+        this.clearTimerInterval();
+        this.message = `${player.symbol} loses by making 3 in a row. ${this.players[activePlayers[0]].symbol} wins.`;
+        return;
+      }
+
+      this.currentPlayerIndex = this.getNextActivePlayerIndex(playerIndex);
+      this.turnStartedAt = Date.now();
+      this.nowTick = this.turnStartedAt;
+
+      const nextPlayer = this.players[this.currentPlayerIndex];
+      this.message = `${player.symbol} is out for making 3 in a row. ${nextPlayer.symbol} to move.`;
+    },
+
+    finishByTimeout(playerIndex) {
+      const player = this.players[playerIndex];
+
+      if (this.players.length === 2) {
+        const winnerIndex = this.getNextActivePlayerIndex(playerIndex);
+        this.gameOver = true;
+        this.clearTimerInterval();
+        this.message = `${player.symbol} ran out of time. ${this.players[winnerIndex].symbol} wins.`;
+        return;
+      }
+
+      player.isOut = true;
+
+      const activePlayers = this.getActivePlayerIndices();
+
+      if (activePlayers.length === 1) {
+        this.gameOver = true;
+        this.clearTimerInterval();
+        this.message = `${player.symbol} ran out of time. ${this.players[activePlayers[0]].symbol} wins.`;
+        return;
+      }
+
+      this.currentPlayerIndex = this.getNextActivePlayerIndex(playerIndex);
+      this.turnStartedAt = Date.now();
+      this.nowTick = this.turnStartedAt;
+
+      const nextPlayer = this.players[this.currentPlayerIndex];
+      this.message = `${player.symbol} ran out of time and is out. ${nextPlayer.symbol} to move.`;
+    },
+
+    shuffleArray(arr) {
+      const a = [...arr];
+      for (let i = a.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [a[i], a[j]] = [a[j], a[i]];
+      }
+      return a;
     },
 
     isBoardFull() {
@@ -636,6 +838,9 @@ createApp({
     },
 
     hasLineOfLength(playerIndex, targetLength) {
+      return !!this.findLineOfLength(playerIndex, targetLength);
+    },
+    findLineOfLength(playerIndex, targetLength) {
       const dirs = [
         [0, 1],
         [1, 0],
@@ -655,25 +860,25 @@ createApp({
               continue;
             }
 
-            let len = 0;
+            const cells = [];
             let rr = r;
             let cc = c;
 
             while (this.inBounds(rr, cc) && this.board[rr][cc] === playerIndex) {
-              len++;
+              cells.push({ r: rr, c: cc });
               rr += dr;
               cc += dc;
             }
 
-            if (len >= targetLength) {
-              return true;
+            if (cells.length >= targetLength) {
+              return cells.slice(0, targetLength);
             }
           }
         }
       }
 
-      return false;
-    },
+      return null;
+    },    
 
     inBounds(r, c) {
       return (
