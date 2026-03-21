@@ -32,7 +32,7 @@ window.MonexTemplate = `
           class="board"
           :class="[
             'size-' + settings.boardSize,
-            { 'board-locked': gameOver || !gameStarted }
+            { 'board-locked': gameOver || !gameStarted  || aiThinking }
           ]"
           :style="boardStyle"
         >
@@ -186,7 +186,6 @@ window.MonexTemplate = `
                     </option>
                 </select>
                 </div>
-                <div class="help-text">Placeholder only for now.</div>
             </div>
             </div>
 

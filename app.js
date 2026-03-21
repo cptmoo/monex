@@ -6,13 +6,14 @@
  * @property {MonexSettings} draftSettings
  * @property {MonexPlayer[]} players
  * @property {DraftPlayer[]} draftPlayers
- * @property {((number|null)[][])} board
+ * @property {Board} board
  * @property {number} currentPlayerIndex
  * @property {boolean} menuOpen
  * @property {boolean} newGameOpen
  * @property {boolean} showRulesInMenu
  * @property {boolean} gameOver
  * @property {boolean} gameStarted
+ * @property {boolean} aiThinking
  * @property {string} message
  * @property {number | null} timerInterval
  * @property {number | null} turnStartedAt
@@ -41,10 +42,13 @@
  * @property {(playerIndex: number, text: string) => void} finishWithWin
  * @property {(playerIndex: number) => void} handlePlayerLoss
  * @property {() => void} restartWithCurrentSettings
+ * @property {() => void} runAIMove
+ * @property {() => void} maybeTriggerAI
+ * @property {(r: number, c: number) => void} handleCellClick
  */
 
 const appWindow =
-  /** @type {Window & { Vue?: any, MonexConstants?: any, MonexCore?: any, MonexTemplate?: string }} */ (window);
+  /** @type {Window & { Vue?: any, MonexConstants?: any, MonexCore?: any, MonexTemplate?: string, MonexAI?: any }} */ (window);
 
 if (!appWindow.Vue) {
   throw new Error("Vue is not loaded.");
@@ -62,6 +66,7 @@ if (!appWindow.MonexTemplate) {
 const { createApp } = appWindow.Vue;
 const C = appWindow.MonexConstants;
 const Core = appWindow.MonexCore;
+const AI = appWindow.MonexAI;
 
 createApp({
   template: appWindow.MonexTemplate,
@@ -71,6 +76,7 @@ createApp({
       menuOpen: false,
       newGameOpen: true,
       showRulesInMenu: false,
+      aiThinking: false,
 
       symbolOptions: /** @type {string[]} */ (C.symbolOptions),
       colourOptions: /** @type {string[]} */ (C.colourOptions),
@@ -82,7 +88,7 @@ createApp({
       draftSettings: /** @type {MonexSettings} */ ({ ...C.defaultSettings }),
       draftPlayers: /** @type {DraftPlayer[]} */ ([]),
 
-      board: /** @type {((number|null)[][])} */ ([]),
+      board: /** @type {Board} */ ([]),
       currentPlayerIndex: 0,
       gameOver: false,
       gameStarted: false,
@@ -239,11 +245,12 @@ createApp({
       this.moveHistory = [];
       this.redoHistory = [];
 
-      this.message = this.players.some((/** @type {MonexPlayer} */ p) => p.isAI)
-        ? `${this.players[this.currentPlayerIndex].symbol} starts. AI is not implemented yet.`
-        : `${this.players[this.currentPlayerIndex].symbol} starts.`;
+      this.message = `${this.players[this.currentPlayerIndex].symbol} starts.`;
 
       this.startTurnClock();
+
+      //AI trigger check
+      this.maybeTriggerAI();
     },
 
     /** @this {MonexApp} */
@@ -367,6 +374,7 @@ createApp({
       if (this.gameOver) return;
       if (!this.gameStarted) return;
       if (this.board[r]?.[c] !== null) return;
+      if (this.aiThinking) return;
 
       const legalResult = Core.validateMove(
         this.board,
@@ -442,6 +450,68 @@ createApp({
       if (!nextPlayer) return;
 
       this.message = `${nextPlayer.symbol} to move.`;
+
+      //AI trigger check
+      this.maybeTriggerAI();      
+    },
+
+    /** @this {MonexApp} */
+    maybeTriggerAI() {
+      if (!this.gameStarted) return;
+      if (this.gameOver) return;
+
+      const player = this.players[this.currentPlayerIndex];
+      if (!player) return;
+      if (!player.isAI) return;
+
+      this.aiThinking = true;
+      this.message = `${player.symbol} is thinking...`;
+
+      // Small delay so UI updates first
+      setTimeout(() => {
+        this.runAIMove();
+      }, 150);
+    },
+
+    /** @this {MonexApp} */
+    runAIMove() {
+      if (this.gameOver) {
+        this.aiThinking = false;
+        return;
+      }
+
+      try {
+        const move = AI.chooseMove(
+          this.board,
+          this.settings,
+          this.players,
+          this.currentPlayerIndex
+        );
+        this.aiThinking = false;
+        
+        if (!move) {
+          this.message = `The AI did not find a valid move, please complete their move`;
+          return;
+        }
+
+        const validation = Core.validateMove(
+          this.board,
+          this.settings,
+          this.players,
+          this.currentPlayerIndex,
+          move.r,
+          move.c
+        );
+
+        if (this.board[move.r][move.c] !== null || !validation.ok) {
+          this.message = `The AI did not find a valid move, please complete their move`;
+          return;
+        }
+
+        this.handleCellClick(move.r, move.c);
+      } finally {
+        this.aiThinking = false;
+      }
     },
 
     /**
@@ -465,18 +535,25 @@ createApp({
     undoMove() {
       if (!this.canUndo) return;
 
-      this.redoHistory.push(this.createSnapshot());
-      const snapshot = this.moveHistory.pop();
-      if (!snapshot) return;
+      do {
+        this.redoHistory.push(this.createSnapshot());
+        const snapshot = this.moveHistory.pop();
+        if (!snapshot) break;
 
-      this.board = Core.cloneBoard(snapshot.board);
-      this.currentPlayerIndex = snapshot.currentPlayerIndex;
-      this.players = Core.clonePlayers(snapshot.players);
-      this.gameOver = snapshot.gameOver;
-      this.gameStarted = snapshot.gameStarted;
+        this.board = Core.cloneBoard(snapshot.board);
+        this.currentPlayerIndex = snapshot.currentPlayerIndex;
+        this.players = Core.clonePlayers(snapshot.players);
+        this.gameOver = snapshot.gameOver;
+        this.gameStarted = snapshot.gameStarted;
+        this.lastMove = snapshot.lastMove ? { ...snapshot.lastMove } : null;
+        this.resultLine = Core.cloneResultLine(snapshot.resultLine);
+
+      } while (
+        this.canUndo &&
+        this.players[this.currentPlayerIndex]?.isAI
+      );
+
       this.message = "Move undone.";
-      this.lastMove = snapshot.lastMove ? { ...snapshot.lastMove } : null;
-      this.resultLine = Core.cloneResultLine(snapshot.resultLine);
 
       if (this.gameStarted && !this.gameOver) {
         this.startTurnClock();
@@ -567,6 +644,8 @@ createApp({
       if (!nextPlayer) return;
 
       this.message = `${player.symbol} is out for making 3 in a row. ${nextPlayer.symbol} to move.`;
+      //AI trigger check
+      this.maybeTriggerAI();        
     },
 
     /**
@@ -611,6 +690,8 @@ createApp({
       if (!nextPlayer) return;
 
       this.message = `${player.symbol} ran out of time and is out. ${nextPlayer.symbol} to move.`;
+      //AI trigger check
+      this.maybeTriggerAI();        
     }
   }
 }).mount("#app");

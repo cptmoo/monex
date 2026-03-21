@@ -73,7 +73,7 @@ monexWindow.MonexCore = {
    * Builds an empty square board filled with null.
    *
    * @param {number} boardSize
-   * @returns {((number|null)[][])}
+   * @returns {Board}
    */
   createEmptyBoard(boardSize) {
     return Array.from({ length: boardSize }, () =>
@@ -84,8 +84,8 @@ monexWindow.MonexCore = {
   /**
    * Deep-clones a board.
    *
-   * @param {((number|null)[][])} board
-   * @returns {((number|null)[][])}
+   * @param {Board} board
+   * @returns {Board}
    */
   cloneBoard(board) {
     return board.map((row) => [...row]);
@@ -119,7 +119,7 @@ monexWindow.MonexCore = {
   /**
    * Safely reads a board cell.
    *
-   * @param {((number|null)[][])} board
+   * @param {Board} board
    * @param {number} r
    * @param {number} c
    * @returns {number | null}
@@ -131,7 +131,7 @@ monexWindow.MonexCore = {
   /**
    * Checks whether a board cell is occupied.
    *
-   * @param {((number|null)[][])} board
+   * @param {Board} board
    * @param {number} r
    * @param {number} c
    * @returns {boolean}
@@ -286,7 +286,7 @@ monexWindow.MonexCore = {
   /**
    * Checks whether every board cell is occupied.
    *
-   * @param {((number|null)[][])} board
+   * @param {Board} board
    * @returns {boolean}
    */
   isBoardFull(board) {
@@ -309,7 +309,7 @@ monexWindow.MonexCore = {
    * Finds a continuous line of the given length for one player.
    * If a longer run exists, the first targetLength cells are returned.
    *
-   * @param {((number|null)[][])} board
+   * @param {Board} board
    * @param {number} boardSize
    * @param {number} playerIndex
    * @param {number} targetLength
@@ -361,7 +361,7 @@ monexWindow.MonexCore = {
   /**
    * Returns true if the player has a line of the given length.
    *
-   * @param {((number|null)[][])} board
+   * @param {Board} board
    * @param {number} boardSize
    * @param {number} playerIndex
    * @param {number} targetLength
@@ -375,7 +375,7 @@ monexWindow.MonexCore = {
    * Checks whether making a move would cause that player to lose by forming 3,
    * unless the move would already win by forming 4.
    *
-   * @param {((number|null)[][])} board
+   * @param {Board} board
    * @param {number} boardSize
    * @param {number} playerIndex
    * @param {number} r
@@ -397,7 +397,7 @@ monexWindow.MonexCore = {
   /**
    * Finds all cells where this player could move right now to make 4 in a row.
    *
-   * @param {((number|null)[][])} board
+   * @param {Board} board
    * @param {number} boardSize
    * @param {number} playerIndex
    * @returns {BoardCell[]}
@@ -426,7 +426,7 @@ monexWindow.MonexCore = {
   /**
    * Validates whether a move is legal, including the 3-player forced-block rule.
    *
-   * @param {((number|null)[][])} board
+   * @param {Board} board
    * @param {MonexSettings} settings
    * @param {MonexPlayer[]} players
    * @param {number} currentPlayerIndex
@@ -435,6 +435,9 @@ monexWindow.MonexCore = {
    * @returns {MoveValidationResult}
    */
   validateMove(board, settings, players, currentPlayerIndex, r, c) {
+    if (board[r][c] !== null) {
+        return { ok: false, reason: "Cell already occupied." };
+    }
     const activePlayers = this.getActivePlayerIndices(players);
     if (activePlayers.length !== 3) {
     return { ok: true };

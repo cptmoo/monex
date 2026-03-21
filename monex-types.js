@@ -7,6 +7,27 @@
  * @property {number} c
  */
 
+
+/**
+ * The game board: a square grid storing player indices or null.
+ * board[r][c] = playerIndex | null
+ * 
+ * @typedef {(number | null)[][]} Board
+ */
+
+/**
+ * A plain game state used for AI search and simulation.
+ * @typedef {Object} MonexGameState
+ * @property {Board} board
+ * @property {MonexSettings} settings
+ * @property {MonexPlayer[]} players
+ * @property {number} currentPlayerIndex
+ * @property {boolean} gameOver
+ * @property {number | null} winnerIndex
+ * @property {BoardCell | null} lastMove
+ * @property {ResultLine | null} resultLine
+ */
+
 /**
  * A highlighted result line on the board.
  * @typedef {Object} ResultLine
