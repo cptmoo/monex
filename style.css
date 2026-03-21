@@ -7,12 +7,19 @@
   --line: #dcdcdc;
   --line-strong: #bcbcbc;
   --shadow: 0 10px 30px rgba(0, 0, 0, 0.06);
-  --radius: 18px;
-  --radius-sm: 12px;
+  --overlay: rgba(0, 0, 0, 0.28);
+
+  --radius: 6px;
+  --radius-lg: 8px;
+  --radius-sm: 2px;
+
   --tap: 48px;
   --max-width: 620px;
-  --board-size: min(92vw, 520px);
 }
+
+/* =========================================================
+   Base / reset
+   ========================================================= */
 
 * {
   box-sizing: border-box;
@@ -23,6 +30,7 @@ html,
 body {
   margin: 0;
   padding: 0;
+  min-height: 100%;
   background: var(--bg);
   color: var(--text);
   font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -36,6 +44,10 @@ button {
   font: inherit;
 }
 
+/* =========================================================
+   App shell / page layout
+   ========================================================= */
+
 .app-shell {
   min-height: 100vh;
   max-width: var(--max-width);
@@ -43,41 +55,121 @@ button {
   padding: 12px 12px 28px;
 }
 
-.topbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 4px 14px;
-}
-
-.brand-title {
-  font-size: 1.45rem;
-  font-weight: 800;
-  letter-spacing: 0.02em;
-}
-
-.brand-subtitle {
-  font-size: 0.86rem;
-  color: var(--muted);
-  margin-top: 2px;
-}
-
-.icon-button {
-  min-width: var(--tap);
-  min-height: var(--tap);
-  border: 1px solid var(--line);
-  background: var(--card);
-  color: var(--text);
-  border-radius: 999px;
-  box-shadow: var(--shadow);
-  cursor: pointer;
-}
-
 .main {
   display: flex;
   flex-direction: column;
   gap: 14px;
 }
+
+/* =========================================================
+   Top bar
+   ========================================================= */
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 2px 0 12px;
+}
+
+.topbar-spacer {
+  flex: 1;
+}
+
+.topbar-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* =========================================================
+   Buttons
+   ========================================================= */
+
+.icon-button,
+.primary-button,
+.secondary-button,
+.segment,
+.option-chip,
+.colour-swatch {
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.icon-button {
+  width: var(--tap);
+  height: var(--tap);
+  min-width: var(--tap);
+  min-height: var(--tap);
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--text);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  transition: transform 0.06s ease, background 0.12s ease, border-color 0.12s ease, opacity 0.12s ease;
+    font-size: 1.4rem;   /* was default (~1rem) */
+  font-weight: 600;
+  display: grid;
+  place-items: center;
+}
+
+.nav-button {
+  font-size: 1.6rem;
+  font-weight: 700;
+}
+
+.icon-button:active {
+  transform: scale(0.98);
+}
+
+.icon-button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.primary-button,
+.secondary-button {
+  min-height: 50px;
+  border-radius: var(--radius);
+  padding: 0 16px;
+  font-weight: 700;
+  cursor: pointer;
+  border: 1px solid #111111;
+  transition: transform 0.06s ease, background 0.12s ease, border-color 0.12s ease, opacity 0.12s ease;
+}
+
+.primary-button:active,
+.secondary-button:active,
+.segment:active,
+.option-chip:active,
+.colour-swatch:active {
+  transform: scale(0.98);
+}
+
+.primary-button {
+  background: #111111;
+  color: #ffffff;
+  flex: 1 1 0;
+}
+
+.secondary-button {
+  background: #ffffff;
+  color: #111111;
+  border-color: var(--line-strong);
+  flex: 1 1 0;
+}
+
+.secondary-button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* =========================================================
+   Main cards
+   ========================================================= */
 
 .board-panel,
 .status-panel {
@@ -91,6 +183,24 @@ button {
   padding: 12px;
 }
 
+.status-panel {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.status-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--card-2);
+  padding: 12px;
+}
+
+/* =========================================================
+   Board
+   ========================================================= */
+
 .board {
   width: 100%;
   aspect-ratio: 1 / 1;
@@ -101,29 +211,12 @@ button {
 .cell {
   border: 1px solid var(--line-strong);
   background: #ffffff;
-  border-radius: 14px;
+  border-radius: var(--radius);
   display: grid;
   place-items: center;
   cursor: pointer;
   padding: 0;
   transition: transform 0.06s ease, background 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
-}
-
-.cell.last-move {
-  background: #fff6a2;
-  box-shadow: inset 0 0 0 1px #cfcfcf;
-}
-
-.cell.win-cell {
-  background: #f0fdf4;
-  border-color: #86efac;
-  box-shadow: inset 0 0 0 2px #22c55e;
-}
-
-.cell.loss-cell {
-  background: #fef2f2;
-  border-color: #fca5a5;
-  box-shadow: inset 0 0 0 2px #ef4444;
 }
 
 .cell:active {
@@ -157,47 +250,30 @@ button {
   font-size: clamp(1.8rem, 6.2vw, 2.8rem);
 }
 
-.status-panel {
-  padding: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+/* =========================================================
+   Board state highlighting
+   ========================================================= */
+
+.cell.last-move {
+  background: #fff6a2;
+  box-shadow: inset 0 0 0 1px #cfcfcf;
 }
 
-.status-card {
-  border: 1px solid var(--line);
-  border-radius: 16px;
-  background: var(--card-2);
-  padding: 12px;
+.cell.win-cell {
+  background: #f0fdf4;
+  border-color: #86efac;
+  box-shadow: inset 0 0 0 2px #22c55e;
 }
 
-.label {
-  font-size: 0.77rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--muted);
-  margin-bottom: 8px;
+.cell.loss-cell {
+  background: #fef2f2;
+  border-color: #fca5a5;
+  box-shadow: inset 0 0 0 2px #ef4444;
 }
 
-.turn-line {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-height: 32px;
-}
-
-.turn-symbol {
-  font-size: 1.8rem;
-  font-weight: 800;
-  line-height: 1;
-}
-
-.turn-meta,
-.game-over-label {
-  font-size: 1rem;
-  font-weight: 600;
-}
+/* =========================================================
+   Timer chips / message area
+   ========================================================= */
 
 .timers {
   display: flex;
@@ -210,7 +286,7 @@ button {
   align-items: center;
   gap: 8px;
   padding: 10px 12px;
-  border-radius: 999px;
+  border-radius: var(--radius);
   border: 1px solid var(--line);
   background: #ffffff;
 }
@@ -218,6 +294,11 @@ button {
 .timer-chip.active {
   border-color: #111111;
   box-shadow: inset 0 0 0 1px #111111;
+}
+
+.timer-chip.out {
+  opacity: 0.45;
+  border-style: dashed;
 }
 
 .timer-symbol {
@@ -231,66 +312,31 @@ button {
   font-weight: 700;
 }
 
-.message-area,
-.rules-text,
-.help-text {
+.message-area {
   line-height: 1.45;
   color: #222222;
+  min-height: 1.45em;
 }
 
-.rules-text,
-.help-text {
-  font-size: 0.93rem;
-  color: var(--muted);
-}
-
-.action-row,
-.sheet-actions {
-  display: flex;
-  gap: 10px;
-}
-
-.action-row-3 > * {
-  flex: 1 1 0;
-}
-
-.secondary-button:disabled {
-  opacity: 0.45;
-  cursor: default;
-}
-
-.primary-button,
-.secondary-button {
-  min-height: 50px;
-  border-radius: 14px;
-  padding: 0 16px;
-  font-weight: 700;
-  cursor: pointer;
-  border: 1px solid #111111;
-}
-
-.primary-button {
-  background: #111111;
-  color: #ffffff;
-  flex: 1 1 0;
-}
-
-.secondary-button {
-  background: #ffffff;
-  color: #111111;
-  border-color: var(--line-strong);
-  flex: 1 1 0;
-}
+/* =========================================================
+   Overlay / sheets
+   ========================================================= */
 
 .overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.28);
+  background: var(--overlay);
   display: flex;
-  align-items: flex-end;
+  align-items: flex-start;
   justify-content: center;
   padding: 12px;
   z-index: 20;
+}
+
+.menu-overlay {
+  align-items: flex-start;
+  justify-content: flex-start;
+  padding: 64px 12px 12px;
 }
 
 .sheet {
@@ -299,17 +345,23 @@ button {
   overflow: auto;
   background: #ffffff;
   border: 1px solid var(--line);
-  border-radius: 24px;
+  border-radius: var(--radius-lg);
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.18);
   padding: 14px;
+}
+
+.menu-sheet {
+  width: min(100%, 340px);
+  max-height: none;
+  border-radius: var(--radius);
 }
 
 .sheet-header {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
+  align-items: center;
   gap: 12px;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
 }
 
 .sheet-title {
@@ -317,18 +369,62 @@ button {
   font-weight: 800;
 }
 
-.sheet-subtitle {
-  font-size: 0.9rem;
-  color: var(--muted);
-  margin-top: 4px;
+/* =========================================================
+   Menu sheet
+   ========================================================= */
+
+.menu-actions {
+  margin-bottom: 12px;
 }
+
+.menu-actions .secondary-button,
+.menu-actions .primary-button {
+  min-height: 48px;
+}
+
+/* =========================================================
+   New game setup groups
+   ========================================================= */
 
 .setup-group {
   border: 1px solid var(--line);
-  border-radius: 16px;
+  border-radius: var(--radius);
   padding: 12px;
   margin-bottom: 12px;
   background: #fcfcfc;
+}
+
+.setup-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.compact-group {
+  margin-bottom: 0;
+}
+
+.select-wrap {
+  position: relative;
+}
+
+.select-input {
+  width: 100%;
+  min-height: 42px;
+  border-radius: 10px;
+  border: 1px solid var(--line-strong);
+  background: #ffffff;
+  color: #111111;
+  padding: 0 40px 0 14px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.select-input:focus {
+  outline: none;
+  border-color: #111111;
+  box-shadow: inset 0 0 0 1px #111111;
 }
 
 .group-title {
@@ -347,9 +443,9 @@ button {
 }
 
 .segment {
-  min-height: 42px;
-  padding: 0 14px;
-  border-radius: 999px;
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: var(--radius);
   border: 1px solid var(--line-strong);
   background: #ffffff;
   color: #111111;
@@ -362,19 +458,25 @@ button {
   border-color: #111111;
 }
 
+/* =========================================================
+   Player cards
+   ========================================================= */
+
 .player-card {
   border: 1px solid var(--line);
-  border-radius: 16px;
-  padding: 12px;
-  margin-bottom: 12px;
+  border-radius: var(--radius);
+  padding: 10px;
+  margin-bottom: 10px;
   background: #fcfcfc;
 }
 
 .player-card-header {
   display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin-bottom: 12px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
 }
 
 .player-preview {
@@ -384,7 +486,7 @@ button {
 }
 
 .player-preview-symbol {
-  font-size: 1.8rem;
+  font-size: 1.4rem;
   font-weight: 800;
   line-height: 1;
 }
@@ -397,8 +499,12 @@ button {
   width: fit-content;
 }
 
+/* =========================================================
+   Picker controls
+   ========================================================= */
+
 .picker-block + .picker-block {
-  margin-top: 12px;
+  margin-top: 8px;
 }
 
 .picker-label {
@@ -407,12 +513,12 @@ button {
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--muted);
-  margin-bottom: 8px;
+  margin-bottom: 6px;
 }
 
 .option-grid {
   display: grid;
-  gap: 8px;
+  gap: 6px;
 }
 
 .symbol-grid {
@@ -425,8 +531,8 @@ button {
 
 .option-chip,
 .colour-swatch {
-  min-height: 48px;
-  border-radius: 12px;
+  min-height: 40px;
+  border-radius: var(--radius);
   border: 1px solid var(--line-strong);
   background: #ffffff;
   cursor: pointer;
@@ -448,6 +554,34 @@ button {
   min-height: 44px;
 }
 
+/* =========================================================
+   Shared helper text / rules text
+   ========================================================= */
+
+.rules-text,
+.help-text {
+  font-size: 0.93rem;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.help-text {
+  margin-top: 4px;
+}
+
+/* =========================================================
+   Sheet action rows
+   ========================================================= */
+
+.sheet-actions {
+  display: flex;
+  gap: 10px;
+}
+
+/* =========================================================
+   Responsive adjustments
+   ========================================================= */
+
 @media (min-width: 640px) {
   .app-shell {
     padding-top: 18px;
@@ -464,7 +598,8 @@ button {
   }
 }
 
-.timer-chip.out {
-  opacity: 0.45;
-  border-style: dashed;
+@media (max-width: 490px) {
+  .setup-grid {
+    grid-template-columns: 1fr;
+  }
 }

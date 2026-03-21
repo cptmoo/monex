@@ -8,7 +8,9 @@
  * @property {DraftPlayer[]} draftPlayers
  * @property {((number|null)[][])} board
  * @property {number} currentPlayerIndex
- * @property {boolean} openSetup
+ * @property {boolean} menuOpen
+ * @property {boolean} newGameOpen
+ * @property {boolean} showRulesInMenu
  * @property {boolean} gameOver
  * @property {boolean} gameStarted
  * @property {string} message
@@ -18,21 +20,27 @@
  * @property {BoardCell | null} lastMove
  * @property {ResultLine | null} resultLine
  * @property {MonexSnapshot[]} moveHistory
+ * @property {MonexSnapshot[]} redoHistory
  * @property {boolean} canUndo
- * 
+ * @property {boolean} canRedo
+ *
  * @property {() => void} resetDraft
  * @property {() => void} initialiseEmptyBoard
  * @property {() => void} clearTimerInterval
  * @property {() => void} startTurnClock
  * @property {() => MonexSnapshot} createSnapshot
  * @property {() => void} undoMove
+ * @property {() => void} redoMove
  * @property {() => void} startNewGameFromDraft
+ * @property {() => void} openMenu
+ * @property {() => void} openNewGameSheet
+ * @property {() => void} restartFromMenu
  * @property {(playerIndex: number) => void} finishByTimeout
  * @property {(ms: number) => string} formatTime
- * @property {() => void} commitElapsedToCurrentPlayer 
+ * @property {() => void} commitElapsedToCurrentPlayer
  * @property {(playerIndex: number, text: string) => void} finishWithWin
  * @property {(playerIndex: number) => void} handlePlayerLoss
- * 
+ * @property {() => void} restartWithCurrentSettings
  */
 
 const appWindow =
@@ -60,6 +68,10 @@ createApp({
 
   data() {
     return {
+      menuOpen: false,
+      newGameOpen: true,
+      showRulesInMenu: false,
+
       symbolOptions: /** @type {string[]} */ (C.symbolOptions),
       colourOptions: /** @type {string[]} */ (C.colourOptions),
       aiLevels: /** @type {string[]} */ (C.aiLevels),
@@ -72,7 +84,6 @@ createApp({
 
       board: /** @type {((number|null)[][])} */ ([]),
       currentPlayerIndex: 0,
-      openSetup: true,
       gameOver: false,
       gameStarted: false,
       message: "Set up a new game.",
@@ -81,7 +92,8 @@ createApp({
       nowTick: Date.now(),
       lastMove: /** @type {BoardCell | null} */ (null),
       resultLine: /** @type {ResultLine | null} */ (null),
-      moveHistory: /** @type {MonexSnapshot[]} */ ([])
+      moveHistory: /** @type {MonexSnapshot[]} */ ([]),
+      redoHistory: /** @type {MonexSnapshot[]} */ ([])
     };
   },
 
@@ -99,6 +111,11 @@ createApp({
     /** @this {MonexApp} */
     canUndo() {
       return this.gameStarted && this.moveHistory.length > 0;
+    },
+
+    /** @this {MonexApp} */
+    canRedo() {
+      return this.redoHistory.length > 0;
     }
   },
 
@@ -112,18 +129,12 @@ createApp({
   },
 
   methods: {
-    /**
-     * Rebuilds the board as an empty grid for the current board size.
-     * 
-     * @this {MonexApp}
-     */
+    /** @this {MonexApp} */
     initialiseEmptyBoard() {
       this.board = Core.createEmptyBoard(this.settings.boardSize);
     },
 
     /**
-     * Safely reads a cell from the board.
-     *
      * @this {MonexApp}
      * @param {number} r
      * @param {number} c
@@ -134,8 +145,6 @@ createApp({
     },
 
     /**
-     * Checks whether a board cell is already occupied.
-     *
      * @this {MonexApp}
      * @param {number} r
      * @param {number} c
@@ -146,8 +155,6 @@ createApp({
     },
 
     /**
-     * Returns the CSS class object for a board cell.
-     *
      * @this {MonexApp}
      * @param {number} r
      * @param {number} c
@@ -157,11 +164,7 @@ createApp({
       return Core.cellClasses(this.lastMove, this.resultLine, r, c);
     },
 
-    /**
-     * Resets the setup sheet to match the current settings and players.
-     * 
-     * @this {MonexApp}
-     */
+    /** @this {MonexApp} */
     resetDraft() {
       this.draftSettings = { ...this.settings };
       this.draftPlayers = /** @type {DraftPlayer[]} */ (
@@ -177,19 +180,28 @@ createApp({
       }
     },
 
-    /**
-     * Opens the setup sheet using the current game values as the starting point.
-     * 
-     * @this {MonexApp}
-     */
-    openSetupFromCurrent() {
+    /** @this {MonexApp} */
+    openMenu() {
+      this.showRulesInMenu = false;
+      this.menuOpen = true;
+    },
+
+    /** @this {MonexApp} */
+    openNewGameSheet() {
       this.resetDraft();
-      this.openSetup = true;
+      this.menuOpen = false;
+      this.showRulesInMenu = false;
+      this.newGameOpen = true;
+    },
+
+    /** @this {MonexApp} */
+    restartFromMenu() {
+      this.menuOpen = false;
+      this.showRulesInMenu = false;
+      this.restartWithCurrentSettings();
     },
 
     /**
-     * Changes the draft player count and preserves existing draft choices where possible.
-     *
      * @this {MonexApp}
      * @param {number} count
      */
@@ -205,11 +217,7 @@ createApp({
       }
     },
 
-    /**
-     * Starts a fresh game from the current draft setup.
-     * 
-     * @this {MonexApp}
-     */
+    /** @this {MonexApp} */
     startNewGameFromDraft() {
       this.settings = { ...this.draftSettings };
 
@@ -223,10 +231,13 @@ createApp({
       this.currentPlayerIndex = 0;
       this.gameOver = false;
       this.gameStarted = true;
-      this.openSetup = false;
+      this.menuOpen = false;
+      this.newGameOpen = false;
+      this.showRulesInMenu = false;
       this.lastMove = null;
       this.resultLine = null;
       this.moveHistory = [];
+      this.redoHistory = [];
 
       this.message = this.players.some((/** @type {MonexPlayer} */ p) => p.isAI)
         ? `${this.players[this.currentPlayerIndex].symbol} starts. AI is not implemented yet.`
@@ -235,11 +246,7 @@ createApp({
       this.startTurnClock();
     },
 
-    /**
-     * Restarts a game using the current live settings and player choices.
-     * 
-     * @this {MonexApp}
-     */
+    /** @this {MonexApp} */
     restartWithCurrentSettings() {
       this.draftSettings = { ...this.settings };
       this.draftPlayers = this.players.length
@@ -253,11 +260,7 @@ createApp({
       this.startNewGameFromDraft();
     },
 
-    /**
-     * Clears the active timer interval if one exists.
-     * 
-     * @this {MonexApp}
-     */
+    /** @this {MonexApp} */
     clearTimerInterval() {
       if (this.timerInterval !== null) {
         clearInterval(this.timerInterval);
@@ -265,13 +268,15 @@ createApp({
       }
     },
 
-    /**
-     * Starts the live ticking display for the current player's clock.
-     * 
-     * @this {MonexApp}
-     */
+    /** @this {MonexApp} */
     startTurnClock() {
       this.clearTimerInterval();
+
+      if (this.settings.timerMinutes <= 0) {
+        this.turnStartedAt = null;
+        return;
+      }
+
       this.turnStartedAt = Date.now();
       this.nowTick = Date.now();
 
@@ -297,12 +302,9 @@ createApp({
       }, 100);
     },
 
-    /**
-     * Commits the elapsed live time to the current player's stored clock.
-     * 
-     * @this {MonexApp}
-     */
+    /** @this {MonexApp} */
     commitElapsedToCurrentPlayer() {
+      if (this.settings.timerMinutes <= 0) return;
       if (!this.players.length || this.turnStartedAt === null) return;
 
       const player = this.players[this.currentPlayerIndex];
@@ -320,13 +322,13 @@ createApp({
     },
 
     /**
-     * Returns the display string for one player's clock.
-     *
      * @this {MonexApp}
      * @param {number} index
      * @returns {string}
      */
     displayTimeForPlayer(index) {
+      if (this.settings.timerMinutes <= 0) return "";
+
       const player = this.players[index];
       if (!player) return "0:00";
 
@@ -346,8 +348,6 @@ createApp({
     },
 
     /**
-     * Formats milliseconds as m:ss.
-     *
      * @param {number} ms
      * @returns {string}
      */
@@ -359,8 +359,6 @@ createApp({
     },
 
     /**
-     * Handles a player tapping a board cell.
-     *
      * @this {MonexApp}
      * @param {number} r
      * @param {number} c
@@ -386,6 +384,7 @@ createApp({
 
       this.moveHistory.push(this.createSnapshot());
       this.commitElapsedToCurrentPlayer();
+      this.redoHistory = [];
       this.resultLine = null;
 
       const playerIndex = this.currentPlayerIndex;
@@ -446,8 +445,6 @@ createApp({
     },
 
     /**
-     * Captures the current game state for undo.
-     *
      * @this {MonexApp}
      * @returns {MonexSnapshot}
      */
@@ -464,14 +461,11 @@ createApp({
       };
     },
 
-    /**
-     * Restores the previous move state if available.
-     * 
-     * @this {MonexApp}
-     */
+    /** @this {MonexApp} */
     undoMove() {
       if (!this.canUndo) return;
 
+      this.redoHistory.push(this.createSnapshot());
       const snapshot = this.moveHistory.pop();
       if (!snapshot) return;
 
@@ -491,9 +485,32 @@ createApp({
       }
     },
 
+    /** @this {MonexApp} */
+    redoMove() {
+      if (!this.canRedo) return;
+
+      const snapshot = this.redoHistory.pop();
+      if (!snapshot) return;
+
+      this.moveHistory.push(this.createSnapshot());
+
+      this.board = Core.cloneBoard(snapshot.board);
+      this.currentPlayerIndex = snapshot.currentPlayerIndex;
+      this.players = Core.clonePlayers(snapshot.players);
+      this.gameOver = snapshot.gameOver;
+      this.gameStarted = snapshot.gameStarted;
+      this.message = "Move redone.";
+      this.lastMove = snapshot.lastMove ? { ...snapshot.lastMove } : null;
+      this.resultLine = Core.cloneResultLine(snapshot.resultLine);
+
+      if (this.gameStarted && !this.gameOver) {
+        this.startTurnClock();
+      } else {
+        this.clearTimerInterval();
+      }
+    },
+
     /**
-     * Ends the game with a win message.
-     *
      * @this {MonexApp}
      * @param {number} playerIndex
      * @param {string} text
@@ -509,10 +526,6 @@ createApp({
     },
 
     /**
-     * Applies the loss rule for a player who formed 3 in a row.
-     * In 2-player, this ends the game immediately.
-     * In 3-player, the player is eliminated and the others continue.
-     *
      * @this {MonexApp}
      * @param {number} playerIndex
      */
@@ -557,8 +570,6 @@ createApp({
     },
 
     /**
-     * Applies the timeout rule for a player whose clock expired.
-     *
      * @this {MonexApp}
      * @param {number} playerIndex
      */

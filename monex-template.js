@@ -1,14 +1,29 @@
 window.MonexTemplate = `
   <div class="app-shell">
     <header class="topbar">
-      <div class="brand">
-        <div class="brand-title">Monex</div>
-        <div class="brand-subtitle">Make 4. Avoid 3.</div>
-      </div>
-
-      <button class="icon-button" @click="openSetupFromCurrent">
+      <button class="icon-button" @click="openMenu">
         ☰
       </button>
+
+      <div class="topbar-spacer"></div>
+
+      <div class="topbar-actions">
+        <button
+          class="icon-button nav-button"
+          :disabled="!canUndo"
+          @click="undoMove"
+        >
+          ◀
+        </button>
+
+        <button
+          class="icon-button nav-button"
+          :disabled="!canRedo"
+          @click="redoMove"
+        >
+          ▶
+        </button>
+      </div>
     </header>
 
     <main class="main">
@@ -42,7 +57,6 @@ window.MonexTemplate = `
 
       <section class="status-panel">
         <div class="status-card">
-          <div class="label">Clock</div>
           <div class="timers">
             <div
               v-for="(player, index) in players"
@@ -67,14 +81,33 @@ window.MonexTemplate = `
         </div>
 
         <div class="status-card">
-          <div class="label">Message</div>
           <div class="message-area">
             {{ message }}
           </div>
         </div>
+      </section>
+    </main>
 
-        <div class="status-card rules-card">
-          <div class="label">Rules</div>
+    <div v-if="menuOpen" class="overlay menu-overlay" @click.self="menuOpen = false">
+      <section class="sheet menu-sheet">
+        <div class="sheet-header">
+          <div class="sheet-title">Monex</div>
+          <button class="icon-button" @click="menuOpen = false">✕</button>
+        </div>
+
+        <div class="sheet-actions menu-actions">
+          <button class="primary-button" @click="openNewGameSheet">
+            New game
+          </button>
+          <button class="secondary-button" @click="restartFromMenu">
+            Restart
+          </button>
+          <button class="secondary-button" @click="showRulesInMenu = !showRulesInMenu">
+            Rules
+          </button>
+        </div>
+
+        <div v-if="showRulesInMenu" class="setup-group">
           <div class="rules-text">
             Make 4 in a row to win. If your move makes 3 in a row, you lose —
             unless that same move also makes 4, which counts as a win.
@@ -85,95 +118,77 @@ window.MonexTemplate = `
             </template>
           </div>
         </div>
-
-        <div class="action-row action-row-3">
-          <button class="primary-button" @click="openSetup = true">
-            New game
-          </button>
-          <button class="secondary-button" @click="restartWithCurrentSettings">
-            Restart
-          </button>
-          <button
-            class="secondary-button"
-            :disabled="!canUndo"
-            @click="undoMove"
-          >
-            Undo
-          </button>
-        </div>
       </section>
-    </main>
+    </div>
 
-    <div v-if="openSetup" class="overlay" @click.self="openSetup = false">
+    <div v-if="newGameOpen" class="overlay" @click.self="newGameOpen = false">
       <section class="sheet">
         <div class="sheet-header">
-          <div>
-            <div class="sheet-title">New game</div>
-            <div class="sheet-subtitle">Configure players, board and timer</div>
-          </div>
-          <button class="icon-button" @click="openSetup = false">✕</button>
+          <div class="sheet-title">New game</div>
+          <button class="icon-button" @click="newGameOpen = false">✕</button>
         </div>
 
-        <div class="setup-group">
-          <div class="group-title">Players</div>
-          <div class="segmented">
-            <button
-              v-for="count in [2, 3]"
-              :key="'pc-' + count"
-              class="segment"
-              :class="{ active: draftSettings.playerCount === count }"
-              @click="setDraftPlayerCount(count)"
-            >
-              {{ count }} players
-            </button>
-          </div>
-        </div>
+        <div class="setup-grid">
+            <div class="setup-group compact-group">
+                <div class="group-title">Players</div>
+                <div class="segmented">
+                <button
+                    v-for="count in [2, 3]"
+                    :key="'pc-' + count"
+                    class="segment"
+                    :class="{ active: draftSettings.playerCount === count }"
+                    @click="setDraftPlayerCount(count)"
+                >
+                    {{ count }} players
+                </button>
+                </div>
+            </div>
 
-        <div class="setup-group">
-          <div class="group-title">Board size</div>
-          <div class="segmented">
-            <button
-              v-for="size in [5, 6]"
-              :key="'bs-' + size"
-              class="segment"
-              :class="{ active: draftSettings.boardSize === size }"
-              @click="draftSettings.boardSize = size"
-            >
-              {{ size }} × {{ size }}
-            </button>
-          </div>
-        </div>
+            <div class="setup-group compact-group">
+                <div class="group-title">Board size</div>
+                <div class="segmented">
+                <button
+                    v-for="size in [5, 6]"
+                    :key="'bs-' + size"
+                    class="segment"
+                    :class="{ active: draftSettings.boardSize === size }"
+                    @click="draftSettings.boardSize = size"
+                >
+                    {{ size }} × {{ size }}
+                </button>
+                </div>
+            </div>
 
-        <div class="setup-group">
-          <div class="group-title">Clock per player</div>
-          <div class="segmented segmented-wrap">
-            <button
-              v-for="minutes in [1, 2, 3, 5, 10]"
-              :key="'tm-' + minutes"
-              class="segment"
-              :class="{ active: draftSettings.timerMinutes === minutes }"
-              @click="draftSettings.timerMinutes = minutes"
-            >
-              {{ minutes }} min
-            </button>
-          </div>
-        </div>
+            <div class="setup-group compact-group">
+                <div class="group-title">Clock</div>
+                <div class="select-wrap">
+                <select v-model="draftSettings.timerMinutes" class="select-input">
+                    <option :value="0">No clock</option>
+                    <option :value="1">1 min</option>
+                    <option :value="2">2 min</option>
+                    <option :value="3">3 min</option>
+                    <option :value="5">5 min</option>
+                    <option :value="10">10 min</option>
+                </select>
+                </div>
+            </div>
 
-        <div class="setup-group">
-          <div class="group-title">AI level</div>
-          <div class="segmented segmented-wrap">
-            <button
-              v-for="level in aiLevels"
-              :key="'ai-' + level"
-              class="segment"
-              :class="{ active: draftSettings.aiLevel === level }"
-              @click="draftSettings.aiLevel = level"
-            >
-              {{ level }}
-            </button>
-          </div>
-          <div class="help-text">Placeholder only for now.</div>
-        </div>
+            <div class="setup-group compact-group">
+                <div class="group-title">AI level</div>
+                <div class="select-wrap">
+                <select v-model="draftSettings.aiLevel" class="select-input">
+                    <option
+                    v-for="level in aiLevels"
+                    :key="'ai-' + level"
+                    :value="level"
+                    >
+                    {{ level }}
+                    </option>
+                </select>
+                </div>
+                <div class="help-text">Placeholder only for now.</div>
+            </div>
+            </div>
 
         <div
           v-for="(player, index) in draftPlayers"
@@ -239,12 +254,8 @@ window.MonexTemplate = `
           </div>
         </div>
 
-        <div class="help-text">
-          Duplicate symbols or colours are allowed, but clearer games usually use different ones.
-        </div>
-
         <div class="sheet-actions">
-          <button class="secondary-button" @click="openSetup = false">
+          <button class="secondary-button" @click="newGameOpen = false">
             Cancel
           </button>
           <button class="primary-button" @click="startNewGameFromDraft">
