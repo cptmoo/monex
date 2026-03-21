@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Monex</title>
   <script>
-    window.MONEX_VERSION = "20260316a";   
+    window.MONEX_VERSION = "20260321a";
   </script>
 </head>
 
@@ -16,26 +16,28 @@
     (function () {
       const v = window.MONEX_VERSION;
 
-      // Load CSS
+      const loadScript = (src) =>
+        new Promise((resolve, reject) => {
+          const script = document.createElement("script");
+          script.src = `${src}?v=${v}`;
+          script.onload = resolve;
+          script.onerror = () => reject(new Error(`Failed to load ${src}`));
+          document.body.appendChild(script);
+        });
+
       const link = document.createElement("link");
       link.rel = "stylesheet";
       link.href = `style.css?v=${v}`;
       document.head.appendChild(link);
 
-      // Load Vue first
-      const vue = document.createElement("script");
-      vue.src = `./vendor/vue.global.prod.js?v=${v}`;
-      vue.onload = function () {
-        // Then load app.js
-        const app = document.createElement("script");
-        app.src = `app.js?v=${v}`;
-        document.body.appendChild(app);
-      };
-      vue.onerror = function () {
-        console.error("Failed to load Vue:", vue.src);
-      };
-
-      document.body.appendChild(vue);
+      loadScript("./vendor/vue.global.prod.js")
+        .then(() => loadScript("monex-constants.js"))
+        .then(() => loadScript("monex-core.js"))
+        .then(() => loadScript("monex-template.js"))
+        .then(() => loadScript("app.js"))
+        .catch((err) => {
+          console.error(err);
+        });
     })();
   </script>
 </body>
