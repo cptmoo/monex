@@ -32,29 +32,27 @@ monexAIWindow.MonexAI = {
         : settings.aiLevel === "Hard" ? 5
         : 7;
 
-    if (activePlayers.length === 3) {
-        return AI.chooseMoveThreePlayer(board, settings, players, currentPlayerIndex, depth);
-    }
+    const state = AI.createGameState(board, settings, players, currentPlayerIndex);
 
-    return AI.chooseMoveTwoPlayer(board, settings, players, currentPlayerIndex, depth);
+    if (activePlayers.length === 3) {
+        return AI.chooseMoveThreePlayer(state, depth);
+    }
+    
+    return AI.chooseMoveTwoPlayer(state, depth);
     },
 
   /**
    * Choose a move in a 2-player game.
    *
-   * @param {Board} board
-   * @param {MonexSettings} settings
-   * @param {MonexPlayer[]} players
-   * @param {number} currentPlayerIndex
+   * @param {MonexGameState} state
    * @param {number} depth
    * @returns {BoardCell | null}
    */
-    chooseMoveTwoPlayer(board, settings, players, currentPlayerIndex, depth) {
+    chooseMoveTwoPlayer(state, depth) {
     const AI = monexAIWindow.MonexAI;
-    const state = AI.createGameState(board, settings, players, currentPlayerIndex);
 
     if (depth <= 1) {
-        return AI.chooseMoveTwoPlayerEasy(state, currentPlayerIndex);
+        return AI.chooseMoveTwoPlayerEasy(state);
     }
 
     //return AI.chooseMoveTwoPlayerMinimax(state, currentPlayerIndex, depth);
@@ -64,25 +62,19 @@ monexAIWindow.MonexAI = {
      * Choose a move in a 2-player game.
      *
      * @param {MonexGameState} state
-     * @param {number} perspectivePlayerIndex
      * @returns {BoardCell | null}
      */    
-    chooseMoveTwoPlayerEasy(state, perspectivePlayerIndex) {
+    chooseMoveTwoPlayerEasy(state) {
         const AI = monexAIWindow.MonexAI;
         /** @type {BoardCell[]} */
-        const moves = AI.generateLegalMoves(
-            state.board,
-            state.settings,
-            state.players,
-            state.currentPlayerIndex
-        );
+        const moves = AI.generateLegalMoves(state);
 
         /** @type {{ move: BoardCell, score: number }[]} */
         const scoredMoves = moves.map((move) => {
             const next = AI.applyMove(state, move);
             return {
             move,
-            score: AI.evaluatePosition(next, perspectivePlayerIndex)
+            score: AI.evaluatePosition(next, state.currentPlayerIndex)
             };
         });
 
@@ -92,14 +84,11 @@ monexAIWindow.MonexAI = {
   /**
    * Choose a move in a 3-player game.
    *
-   * @param {Board} board
-   * @param {MonexSettings} settings
-   * @param {MonexPlayer[]} players
-   * @param {number} currentPlayerIndex
+   * @param {MonexGameState} state
    * @param {number} depth
    * @returns {BoardCell | null}
    */
-  chooseMoveThreePlayer(board, settings, players, currentPlayerIndex, depth) 
+  chooseMoveThreePlayer(state, depth) 
   {
     return null;
   },  
@@ -107,23 +96,20 @@ monexAIWindow.MonexAI = {
   /**
    * Return all legal moves for the current player.
    *
-   * @param {Board} board
-   * @param {MonexSettings} settings
-   * @param {MonexPlayer[]} players
-   * @param {number} currentPlayerIndex
+   * @param {MonexGameState} state
    * @returns {BoardCell[]}
    */
-  generateLegalMoves(board, settings, players, currentPlayerIndex) 
+  generateLegalMoves(state) 
   {
     const Core = monexAIWindow.MonexCore;
 
     /** @type {BoardCell[]} */
     const legalMoves = [];
-    for (let r = 0; r < settings.boardSize; r++) {
-      for (let c = 0; c < settings.boardSize; c++) {
-        if (Core.isCellFilled(board,r,c)) continue;
+    for (let r = 0; r < state.settings.boardSize; r++) {
+      for (let c = 0; c < state.settings.boardSize; c++) {
+        if (Core.isCellFilled(state.board,r,c)) continue;
 
-        const validation  = Core.validateMove(board, settings, players, currentPlayerIndex, r, c)
+        const validation  = Core.validateMove(state.board, state.settings, state.players, state.currentPlayerIndex, r, c)
         if (validation.ok) {
             legalMoves.push({r,c})
         }
