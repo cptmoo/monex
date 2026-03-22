@@ -45,6 +45,15 @@ monexAIWindow.MonexAI = {
     }
 
     if (activePlayers.length === 3) {
+        let depth = settings.aiLevel === "Easy" ? 1
+        : settings.aiLevel === "Medium" ? 2
+        : settings.aiLevel === "Hard" ? 3
+        : 4;
+        if (fillRatio < 0.2) {
+        depth = Math.min(depth, 2);
+    } else if (fillRatio < 0.4) {
+        depth = Math.min(depth, 3);
+    }
         return AI.chooseMoveThreePlayer(state, depth);
     }
     
@@ -255,11 +264,230 @@ const indent = "  ".repeat(10 - depth);
    * @param {number} depth
    * @returns {BoardCell | null}
    */
-  chooseMoveThreePlayer(state, depth) 
-  {
-    return null;
-  },  
+  chooseMoveThreePlayer(state, depth) {
+    const AI = monexAIWindow.MonexAI;
+    const currentPlayerIndex = state.currentPlayerIndex;
 
+    /** @type {BoardCell[]} */
+    let moves = AI.generateLegalMoves(state);
+    if (moves.length === 0) return null;
+
+    // Immediate win shortcut
+    for (const move of moves) {
+      const next = AI.applyMove(state, move);
+      if (next.gameOver && next.winnerIndex === currentPlayerIndex) {
+        return move;
+      }
+    }
+
+    // Light move ordering: prefer moves that look best immediately for the current player
+    moves = [...moves]
+      .map((move) => {
+        const next = AI.applyMove(state, move);
+        const vector = AI.evaluatePositionVector(next);
+        return {
+          move,
+          score: vector[currentPlayerIndex]
+        };
+      })
+      .sort((a, b) => b.score - a.score)
+      .map((item) => item.move);
+
+    /** @type {{ move: BoardCell, score: number }[]} */
+    const scoredMoves = moves.map((move) => {
+      const next = AI.applyMove(state, move);
+      const vector = AI.maxN(next, depth - 1);
+      return {
+        move,
+        score: vector[currentPlayerIndex]
+      };
+    });
+
+    return AI.pickRandomBestMove(scoredMoves);
+  },
+
+  /**
+   * Evaluate a 3-player state using MaxN.
+   *
+   * @param {MonexGameState} state
+   * @param {number} depth
+   * @returns {[number, number, number]}
+   */
+  maxN(state, depth) {
+    const Core = monexAIWindow.MonexCore;
+    const AI = monexAIWindow.MonexAI;
+
+    if (state.gameOver || depth <= 0) {
+      return AI.evaluatePositionVector(state);
+    }
+
+    const activePlayers = Core.getActivePlayerIndices(state.players);
+
+    // Once only two players remain, hand off to the 2-player solver
+    if (activePlayers.length === 2) {
+      return AI.evaluateTwoPlayerSubtreeAsVector(state, depth, activePlayers);
+    }
+
+    /** @type {BoardCell[]} */
+    let moves = AI.generateLegalMoves(state);
+    if (moves.length === 0) {
+      return AI.evaluatePositionVector(state);
+    }
+
+    const currentPlayerIndex = state.currentPlayerIndex;
+
+    // Light move ordering for nicer play and a little speed help
+    moves = [...moves]
+      .map((move) => {
+        const next = AI.applyMove(state, move);
+        const vector = AI.evaluatePositionVector(next);
+        return {
+          move,
+          score: vector[currentPlayerIndex]
+        };
+      })
+      .sort((a, b) => b.score - a.score)
+      .map((item) => item.move);
+
+    /** @type {[number, number, number] | null} */
+    let bestVector = null;
+    let bestValue = -Infinity;
+
+    for (const move of moves) {
+      const next = AI.applyMove(state, move);
+      const vector = AI.maxN(next, depth - 1);
+      const value = vector[currentPlayerIndex];
+
+      if (bestVector === null || value > bestValue) {
+        bestVector = vector;
+        bestValue = value;
+      }
+    }
+
+    return bestVector || AI.evaluatePositionVector(state);
+  },
+  /**
+   * Evaluate a 3-player position as a score vector.
+   *
+   * @param {MonexGameState} state
+   * @returns {[number, number, number]}
+   */
+  evaluatePositionVector(state) {
+    const Core = monexAIWindow.MonexCore;
+
+    /** @type {[number, number, number]} */
+    const scores = [0, 0, 0];
+
+    if (state.gameOver) {
+      if (state.winnerIndex === null) {
+        return [0, 0, 0];
+      }
+
+      for (let i = 0; i < state.players.length; i++) {
+        if (state.players[i].isOut) {
+          scores[i] = -1000000;
+        } else if (i === state.winnerIndex) {
+          scores[i] = 1000000;
+        } else {
+          scores[i] = -1000000;
+        }
+      }
+
+      return scores;
+    }
+
+    const centre = (state.settings.boardSize - 1) / 2;
+
+    for (let i = 0; i < state.players.length; i++) {
+      const player = state.players[i];
+
+      if (!player || player.isOut) {
+        scores[i] = -1000000;
+        continue;
+      }
+
+      let score = 0;
+
+      // Immediate winning threats for this player
+      const myWinningMoves = Core.findWinningMovesForPlayer(
+        state.board,
+        state.settings.boardSize,
+        i
+      );
+      if (myWinningMoves.length > 0) {
+        score += 1000;
+      }
+
+      // Penalise opponents having immediate winning threats
+      for (let j = 0; j < state.players.length; j++) {
+        if (j === i) continue;
+        const opponent = state.players[j];
+        if (!opponent || opponent.isOut) continue;
+
+        const opponentWinningMoves = Core.findWinningMovesForPlayer(
+          state.board,
+          state.settings.boardSize,
+          j
+        );
+
+        if (opponentWinningMoves.length > 0) {
+          score -= 800;
+        }
+      }
+
+      // Mild centre control
+      for (let r = 0; r < state.settings.boardSize; r++) {
+        for (let c = 0; c < state.settings.boardSize; c++) {
+          if (state.board[r][c] !== i) continue;
+
+            const distance = Math.abs(r - centre) + Math.abs(c - centre);
+            const weight = Math.max(0, 1 - 0.2 * distance);
+        //  score += weight;
+        }
+      }
+
+      scores[i] = score;
+    }
+
+    return scores;
+  },
+
+    /**
+   * Evaluate a reduced 2-player subtree and embed it into a 3-player score vector.
+   *
+   * @param {MonexGameState} state
+   * @param {number} depth
+   * @param {number[]} activePlayers
+   * @returns {[number, number, number]}
+   */
+  evaluateTwoPlayerSubtreeAsVector(state, depth, activePlayers) {
+    const AI = monexAIWindow.MonexAI;
+
+    const a = activePlayers[0];
+    const b = activePlayers[1];
+
+    const scoreForA = AI.minimaxAlphaBeta(
+      state,
+      depth,
+      a,
+      -Infinity,
+      Infinity
+    );
+
+    /** @type {[number, number, number]} */
+    const vector = [0, 0, 0];
+
+    vector[a] = scoreForA;
+    vector[b] = -scoreForA;
+
+    for (let i = 0; i < state.players.length; i++) {
+      if (state.players[i].isOut) {
+        vector[i] = -1000000;
+      }
+    }
+
+    return vector;
+  },
   /**
    * Return all legal moves for the current player.
    *
@@ -333,12 +561,12 @@ const indent = "  ".repeat(10 - depth);
         if (cell === null) continue;
 
         const distance = Math.abs(r - centre) + Math.abs(c - centre);
-        const weight = 2 - 0.5 * distance;
+        const weight = Math.max(0, 1 - 0.2 * distance);
 
         if (cell === perspectivePlayerIndex) {
-            score += weight;
+    //        score += weight;
         } else if (cell === opponentIndex) {
-            score -= weight;
+     //       score -= weight;
         }
         }
     }
